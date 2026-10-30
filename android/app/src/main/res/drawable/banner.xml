@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Placeholder Fire TV / Android TV home-screen banner. Replace with your own 320x180 image named banner.png. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <path android:fillColor="#7C4DFF" android:pathData="M0,0h320v180h-320z" />
+    <path android:fillColor="#FF4D8D" android:pathData="M0,120h320v60h-320z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M160,40a34,34 0,1 0,0.01 0z" />
+</vector>
