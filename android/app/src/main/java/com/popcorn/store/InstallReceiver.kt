@@ -9,8 +9,8 @@ import android.widget.Toast
 import java.io.File
 
 /**
- * Receives the result of an install. When the install finishes (success, failure or cancel)
- * and the customer left "Delete the installer afterwards" on, the downloaded APK is removed.
+ * Receives the result of an install. When the app screen is open it takes over (shows the result and the
+ * "delete the installer" step). If the screen is closed, this receiver deletes the installer itself and shows a toast.
  */
 class InstallReceiver : BroadcastReceiver() {
 
@@ -22,8 +22,14 @@ class InstallReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val name = intent.getStringExtra(EXTRA_NAME) ?: "App"
+        val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, -1)
+        val path = intent.getStringExtra(EXTRA_PATH) ?: ""
+        val deleteAfter = intent.getBooleanExtra(EXTRA_DELETE, true)
 
-        when (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, -1)) {
+        val listener = InstallEvents.onStatus
+        val screenTookOver = listener?.invoke(name, status, path, deleteAfter) ?: false
+
+        when (status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 // Android wants the customer to tap "Install". Show that screen; we are not done yet.
                 val confirm: Intent? =
@@ -36,20 +42,19 @@ class InstallReceiver : BroadcastReceiver() {
             }
 
             PackageInstaller.STATUS_SUCCESS -> {
-                cleanup(intent)
-                Toast.makeText(context, "$name installed", Toast.LENGTH_LONG).show()
+                if (!screenTookOver) cleanup(path, deleteAfter)
+                if (listener == null) Toast.makeText(context, "$name installed", Toast.LENGTH_LONG).show()
             }
 
             else -> {
-                cleanup(intent)
-                Toast.makeText(context, "$name was not installed", Toast.LENGTH_LONG).show()
+                if (!screenTookOver) cleanup(path, deleteAfter)
+                if (listener == null) Toast.makeText(context, "$name was not installed", Toast.LENGTH_LONG).show()
             }
         }
     }
 
-    private fun cleanup(intent: Intent) {
-        if (!intent.getBooleanExtra(EXTRA_DELETE, true)) return
-        val path = intent.getStringExtra(EXTRA_PATH) ?: return
+    private fun cleanup(path: String, deleteAfter: Boolean) {
+        if (!deleteAfter || path.isEmpty()) return
         File(path).delete()
     }
 }
