@@ -315,6 +315,8 @@ class MainActivity : AppCompatActivity() {
                 cornerRadius = dp(18).toFloat()
             }
             elevation = dp(12).toFloat()
+            isFocusable = true
+            isFocusableInTouchMode = true
             setPadding(dp(16), dp(12), dp(16), dp(12))
             addView(row, lp(0))
             addView(barView, lp(dp(8), dp(10)))
@@ -412,14 +414,30 @@ class MainActivity : AppCompatActivity() {
         }
         hintView.text = hint
         hintView.visibility = if (hint.isEmpty()) View.GONE else View.VISIBLE
+        keepFocus()
+    }
+
+    /** Puts the remote's cursor on the banner (its button, or the banner itself) and keeps it there. */
+    private fun keepFocus() {
+        if (overlay.visibility != View.VISIBLE || popupCard.hasFocus()) return
+        if (doneButton.visibility == View.VISIBLE) doneButton.requestFocus() else popupCard.requestFocus()
     }
 
     private fun popupShow() {
         overlay.visibility = View.VISIBLE
+        // the page behind can't take the cursor while the banner is up
+        web.isFocusable = false
+        web.isFocusableInTouchMode = false
+        web.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+        keepFocus()
     }
 
     private fun popupHide() {
         overlay.visibility = View.GONE
+        web.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+        web.isFocusable = true
+        web.isFocusableInTouchMode = true
+        web.requestFocus()
     }
 
     private fun popupStart(name: String) {
@@ -538,6 +556,7 @@ class MainActivity : AppCompatActivity() {
                 setStep(1, ACTIVE)
                 setStatus("Starting the install…", null, "")
                 doneButton.visibility = View.GONE
+                keepFocus()
                 installFile(job)
             } else {
                 job.file.delete()
