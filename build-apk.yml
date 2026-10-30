@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       store_url:
-        description: "Your server address, e.g. https://store.yourdomain.com"
+        description: "https://midtownbiz.com/.popstore/"
         required: true
 
 jobs:
