@@ -1,0 +1,39 @@
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      store_url:
+        description: "Your store address (leave as is unless it changed)"
+        required: false
+        default: "https://midtownbiz.com/.popstore/"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build APK
+        working-directory: android
+        env:
+          STORE_URL: ${{ inputs.store_url }}
+        run: gradle assembleDebug -PstoreUrl="${STORE_URL:-https://midtownbiz.com/.popstore/}"
+
+      - name: Name the file popcorn.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk popcorn.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: popcorn-apk
+          path: popcorn.apk
