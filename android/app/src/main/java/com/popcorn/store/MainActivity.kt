@@ -35,6 +35,8 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import java.io.File
 
 /** One pending download: where the APK is, whether to delete it afterwards, and its display name. */
@@ -62,6 +64,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var web: WebView
+    private lateinit var rootView: FrameLayout
 
     // pop-up views
     private lateinit var overlay: FrameLayout
@@ -75,7 +78,10 @@ class MainActivity : AppCompatActivity() {
 
     private val stepNames = arrayOf("Download", "Install", "Delete installer")
     private val stepStates = IntArray(3)
-    private val pink = Color.parseColor("#FF4D8D")
+    private var pink = Color.parseColor("#FF4D8D")
+    private var accent = Color.parseColor("#7C4DFF")
+    private var cardColor = Color.parseColor("#1B1535")
+    private var textColor = Color.WHITE
     private val green = Color.parseColor("#4ADE80")
     private val red = Color.parseColor("#F87171")
     private val gray = Color.parseColor("#8F89B3")
@@ -138,6 +144,14 @@ class MainActivity : AppCompatActivity() {
 
         // The pop-up sits on top of the whole screen, so it can't be missed.
         val root = FrameLayout(this)
+        rootView = root
+        root.setBackgroundColor(Color.parseColor("#0E0A1F"))
+        // Keep the page (and its Popcorn PlayStore logo at the top) out from under the status bar / camera cut-out
+        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
+            val b = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+            v.setPadding(b.left, b.top, b.right, b.bottom)
+            insets
+        }
         root.addView(
             web,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
@@ -320,6 +334,37 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun pillDrawable(stroke: Boolean): GradientDrawable {
+        val d = resources.displayMetrics.density
+        return GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(accent, pink)).apply {
+            cornerRadius = (22 * d)
+            if (stroke) setStroke((3 * d).toInt(), Color.WHITE)
+        }
+    }
+
+    /** Colours chosen in the admin panel (sent by the store page): the banner follows the website's theme. */
+    private fun applyTheme(card: Int, ac: Int, ac2: Int, tx: Int, bg: Int) {
+        rootView.setBackgroundColor(bg)
+        @Suppress("DEPRECATION") try { window.statusBarColor = bg } catch (_: Exception) {}
+        accent = ac; pink = ac2; cardColor = card; textColor = tx
+        val d = resources.displayMetrics.density
+        popupCard.background = GradientDrawable().apply {
+            setColor(card)
+            setStroke((2 * d).toInt(), ac2)
+            cornerRadius = 18 * d
+        }
+        titleView.setTextColor(tx)
+        statusView.setTextColor(tx)
+        val tint = ColorStateList.valueOf(ac2)
+        barView.progressTintList = tint
+        barView.indeterminateTintList = tint
+        doneButton.background = StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_focused), pillDrawable(true))
+            addState(intArrayOf(), pillDrawable(false))
+        }
+        renderSteps()
+    }
+
     private fun cancelDownload() {
         val dm = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
         for ((id, job) in jobs.toMap()) {
@@ -424,6 +469,15 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun install(url: String, name: String, deleteAfter: Boolean) {
             runOnUiThread { beginInstall(url, name, deleteAfter) }
+        }
+
+        @JavascriptInterface
+        fun setTheme(card: String, ac: String, ac2: String, tx: String, bg: String) {
+            try {
+                val c = Color.parseColor(card); val a = Color.parseColor(ac)
+                val b = Color.parseColor(ac2); val t = Color.parseColor(tx); val g = Color.parseColor(bg)
+                runOnUiThread { applyTheme(c, a, b, t, g) }
+            } catch (_: Exception) {}   // unknown colour format: keep the current colours
         }
 
         @JavascriptInterface
