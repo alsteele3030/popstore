@@ -75,6 +75,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var barView: ProgressBar
     private lateinit var hintView: TextView
     private lateinit var doneButton: Button
+    private lateinit var openButton: Button
+    private var lastPkg: String? = null
 
     private val stepNames = arrayOf("Download", "Install", "Delete installer")
     private val stepStates = IntArray(3)
@@ -278,22 +280,32 @@ class MainActivity : AppCompatActivity() {
             cornerRadius = dp(22).toFloat()
             if (stroke) setStroke(dp(3), Color.WHITE)
         }
-        doneButton = Button(this).apply {
-            text = "Cancel"
+        fun styled(label: String) = Button(this).apply {
+            text = label
             isAllCaps = false
             textSize = 15f
             minHeight = 0
             minimumHeight = 0
+            isFocusable = true
             setPadding(dp(18), dp(8), dp(18), dp(8))
             setTextColor(Color.WHITE)
             background = StateListDrawable().apply {
-                addState(intArrayOf(android.R.attr.state_focused), pill(true))
-                addState(intArrayOf(), pill(false))
-            }
-            setOnClickListener {
-                if (jobs.isNotEmpty()) cancelDownload() else popupHide()
+                addState(intArrayOf(android.R.attr.state_focused), pillDrawable(true))
+                addState(intArrayOf(), pillDrawable(false))
             }
         }
+        doneButton = styled("Cancel").apply {
+            setOnClickListener { if (jobs.isNotEmpty()) cancelDownload() else popupHide() }
+        }
+        openButton = styled("Open").apply {
+            visibility = View.GONE
+            setOnClickListener { openInstalled() }
+        }
+        // the d-pad moves between the two buttons (left/right)
+        openButton.id = View.generateViewId()
+        doneButton.id = View.generateViewId()
+        openButton.nextFocusRightId = doneButton.id
+        doneButton.nextFocusLeftId = openButton.id
 
         val texts = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -304,7 +316,8 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            addView(doneButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(12) })
+            addView(openButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(12) })
+            addView(doneButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dp(10) })
         }
 
         popupCard = LinearLayout(this).apply {
@@ -360,9 +373,11 @@ class MainActivity : AppCompatActivity() {
         val tint = ColorStateList.valueOf(ac2)
         barView.progressTintList = tint
         barView.indeterminateTintList = tint
-        doneButton.background = StateListDrawable().apply {
-            addState(intArrayOf(android.R.attr.state_focused), pillDrawable(true))
-            addState(intArrayOf(), pillDrawable(false))
+        for (b in listOf(doneButton, openButton)) {
+            b.background = StateListDrawable().apply {
+                addState(intArrayOf(android.R.attr.state_focused), pillDrawable(true))
+                addState(intArrayOf(), pillDrawable(false))
+            }
         }
         renderSteps()
     }
@@ -419,8 +434,13 @@ class MainActivity : AppCompatActivity() {
 
     /** Puts the remote's cursor on the banner (its button, or the banner itself) and keeps it there. */
     private fun keepFocus() {
-        if (overlay.visibility != View.VISIBLE || popupCard.hasFocus()) return
-        if (doneButton.visibility == View.VISIBLE) doneButton.requestFocus() else popupCard.requestFocus()
+        if (overlay.visibility != View.VISIBLE) return
+        if (doneButton.hasFocus() || openButton.hasFocus()) return          // already on a button: leave it there
+        when {
+            openButton.visibility == View.VISIBLE -> openButton.requestFocus()   // after an install: "Open" first
+            doneButton.visibility == View.VISIBLE -> doneButton.requestFocus()
+            !popupCard.hasFocus() -> popupCard.requestFocus()
+        }
     }
 
     private fun popupShow() {
@@ -447,6 +467,7 @@ class MainActivity : AppCompatActivity() {
         renderSteps()
         doneButton.text = "Cancel"
         doneButton.visibility = View.VISIBLE
+        openButton.visibility = View.GONE
         setStatus("Downloading… 0%", 0, "")
         popupShow()
     }
@@ -458,11 +479,28 @@ class MainActivity : AppCompatActivity() {
         setStatus(head, if (ok) 100 else 0, "$body $deletedLine")
         doneButton.text = "Done"
         doneButton.visibility = View.VISIBLE
+        openButton.visibility = if (ok && lastPkg != null) View.VISIBLE else View.GONE
         popupShow()
+        popupCard.clearFocus()
+        if (openButton.visibility == View.VISIBLE) openButton.requestFocus() else doneButton.requestFocus()
+    }
+
+    /** Opens the app that was just installed (TV launcher first, then the normal one). */
+    private fun openInstalled() {
+        val pkg = lastPkg ?: return
+        val i = packageManager.getLeanbackLaunchIntentForPackage(pkg) ?: packageManager.getLaunchIntentForPackage(pkg)
+        if (i == null) { toast("Couldn't open it. Find it in your apps."); return }
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        popupHide()
+        startActivity(i)
     }
 
     /** The install is over (worked or not): show the delete step, delete the installer, show the result. */
     private fun finishInstall(name: String, path: String, deleteAfter: Boolean, ok: Boolean) {
+        // read the app's package name from the installer before it is deleted, so "Open" knows what to launch
+        lastPkg = try {
+            if (ok && path.isNotEmpty()) packageManager.getPackageArchiveInfo(path, 0)?.packageName else null
+        } catch (_: Exception) { null }
         setStep(1, if (ok) DONE else FAILED)
         if (!deleteAfter) {
             setStep(2, SKIPPED)
@@ -472,6 +510,7 @@ class MainActivity : AppCompatActivity() {
         setStep(2, ACTIVE)
         setStatus("Deleting the installer…", null, "")
         doneButton.visibility = View.GONE
+        openButton.visibility = View.GONE
         popupShow()
         Thread {
             if (path.isNotEmpty()) File(path).delete()
